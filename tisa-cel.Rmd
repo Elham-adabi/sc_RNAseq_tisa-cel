@@ -1,0 +1,298 @@
+---
+title: "Patients-Tisa-cel"
+output: html_document
+date: "2023-02-28"
+---
+
+## load packages
+```{r}
+#load packages
+package_list <- c(
+  "tidyverse", "Seurat", "patchwork", "SeuratDisk", "ggplot2", "ggrepel", "multimode", "dplyr", "EnhancedVolcano", "writexl", "cowplot", "RColorBrewer", "sctransform", "ggpubr", "ggVennDiagram", "rstatix", "Signac", "Libra"
+)
+invisible(lapply(package_list, require, character.only = TRUE))
+
+set.seed(35) # set a seed to ensure the analysis is reproducible 
+
+# create a directory for the results
+results_dir <- "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Results/"
+if (!dir.exists(results_dir)) {
+  dir.create(results_dir, recursive = TRUE)
+}
+
+```
+
+## load 10x data
+```{r}
+P01 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient20-Infusion/")
+P02 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient21-Infusion/")
+P03 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient22-Infusion/")
+P04 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient23-Infusion/")
+P05 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient24-Infusion/")
+P06 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient25-Infusion/")
+P07 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient26-Infusion/")
+P08 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient27-Infusion/")
+P09 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient28-Infusion/")
+P10 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient29-Infusion/")
+P11 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient30-Infusion/")
+P12 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient31-Infusion/")
+P13 <- Read10X(data.dir = "C:/Single Cell Sequencing/4 Tisa-cel patient samples/Matrices/Patient32-Infusion/")
+```
+
+
+##create seurat object 
+
+```{r}
+#Filter genes detected in fewer than three cells
+P01 <- CreateSeuratObject(counts = P01, project = "P01", min.cells = 3, min.features = 200)
+P02 <- CreateSeuratObject(counts = P02, project = "P02", min.cells = 3, min.features = 200)
+P03 <- CreateSeuratObject(counts = P03, project = "P03", min.cells = 3, min.features = 200)
+P04 <- CreateSeuratObject(counts = P04, project = "P04", min.cells = 3, min.features = 200)
+P05 <- CreateSeuratObject(counts = P05, project = "P05", min.cells = 3, min.features = 200)
+P06 <- CreateSeuratObject(counts = P06, project = "P06", min.cells = 3, min.features = 200)
+P07 <- CreateSeuratObject(counts = P07, project = "P07", min.cells = 3, min.features = 200)
+P08 <- CreateSeuratObject(counts = P08, project = "P08", min.cells = 3, min.features = 200)
+P09 <- CreateSeuratObject(counts = P09, project = "P09", min.cells = 3, min.features = 200)
+P10 <- CreateSeuratObject(counts = P10, project = "P10", min.cells = 3, min.features = 200)
+P11 <- CreateSeuratObject(counts = P11, project = "P11", min.cells = 3, min.features = 200)
+P12 <- CreateSeuratObject(counts = P12, project = "P12", min.cells = 3, min.features = 200)
+P13 <- CreateSeuratObject(counts = P13, project = "P13", min.cells = 3, min.features = 200)
+
+
+```
+
+## merge all seurat
+```{r}
+merged_10x <- merge(P01,
+                     y =c(P02,P03,P04,P05,P06,P07,P08,P09,P10,P11,P12,P13), add.cell.ids = c("lib1","lib2","lib3","lib4","lib5","lib6","lib7","lib8","lib9","lib10","lib11","lib12","lib13"),
+  project = "Tisa-cel CART"
+)
+```
+
+
+
+## QC and filtering
+```{r}
+
+
+merged_10x[["percent.mt"]] <- PercentageFeatureSet(merged_10x, pattern = "^MT-")
+
+# this filtering criteria is based on the original publication for this dataset!
+merged_10x_filtered <- subset(merged_10x, subset = nFeature_RNA > 200 & percent.mt < 15)
+
+```
+
+
+## Normalization
+```{r}
+## If FVF and scaling is at all required for FindMarkers????NO those are required for UMAP visulization
+CART.patients <- NormalizeData(merged_10x_filtered)
+```
+
+
+## data Frame
+```{r}
+data_df_CAR <- data.frame(Expression=CART.patients[["RNA"]]@data["Kymriah",]) # CAR
+data_df_CD4 <- data.frame(Expression=CART.patients[["RNA"]]@data["CD4",]) # CD4
+data_df_CD8A <- data.frame(Expression=CART.patients[["RNA"]]@data["CD8A",]) # CD8A
+
+nmodes(data = data_df_CAR$Expression, bw = bw.nrd0(data_df_CAR$Expression), full.result = T) # CAR
+nmodes(data = data_df_CD4$Expression, bw = bw.nrd0(data_df_CD4$Expression), full.result = T) # CD4
+nmodes(data = data_df_CD8A$Expression, bw = bw.nrd0(data_df_CD8A$Expression), full.result = T) # CD8A
+
+#CAR
+locmodes(data_df_CAR$Expression, mod0=5,lowsup=-Inf,uppsup=Inf,n=2^15,tol=10^(-5),display=T)
+### Define which are the antimodes and add the number in the expm1() to calculate the molecules per cell to be used in log1p(mols/cell)
+expm1(0.1961227) # high = log1p(0.2166762) 
+
+VlnPlot(CART.patients, features = "Kymriah", pt.size = 0.01, group.by = "orig.ident")+geom_hline(yintercept = log1p(0.2166762))+NoLegend()
+
+#CD4
+locmodes(data_df_CD4$Expression, mod0=6,lowsup=-Inf,uppsup=Inf,n=2^15,tol=10^(-5),display=T)
+### Define which are the antimodes and add the number in the expm1() to calculate the molecules per cell to be used in log1p(mols/cell)
+expm1(0.1731927) # high = log1p(0.1890952) 
+
+VlnPlot(CART.patients, features = "CD4", pt.size = 0.01, group.by = "orig.ident")+geom_hline(yintercept = log1p(0.1890952))+NoLegend()
+
+#CD8
+
+locmodes(data_df_CD8A$Expression, mod0=6,lowsup=-Inf,uppsup=Inf,n=2^15,tol=10^(-5),display=T)
+### Define which are the antimodes and add the number in the expm1() to calculate the molecules per cell to be used in log1p(mols/cell)
+expm1(0.2219068) # high = log1p(0.248455) 
+
+VlnPlot(CART.patients, features = "CD8A", pt.size = 0.01, group.by = "orig.ident")+geom_hline(yintercept = log1p(0.248455))+NoLegend()
+
+```
+
+## percent of CAR positive cells
+```{r}
+table(subset(CART.patients, `Kymriah` > log1p(0.2166762))$orig.ident)/table(CART.patients$orig.ident)*100
+```
+
+## CAR positive
+```{r}
+#CARrna
+
+CAR <- WhichCells(object = CART.patients, expression = `Kymriah` > log1p(0.2166762))
+
+# cell labels are returned
+
+head(CAR)
+
+# we then add a new column to the meta data based on the presence of the cell label from WhichCells
+
+CART.patients$CAR<- ifelse(colnames(CART.patients) %in% CAR, "CAR+", "CAR-")
+
+# set the identities to the new column(s)
+Idents(CART.patients) <- "CAR"
+
+
+# CD4 RNA
+CD4 <- WhichCells(object = CART.patients, expression = `CD4` > log1p(0.1731927))
+
+# cell labels are returned
+
+head(CD4)
+
+# we then add a new column to the meta data based on the presence of the cell label from WhichCells
+
+CART.patients$CD4<- ifelse(colnames(CART.patients) %in% CD4, "CD4+", "CD4-")
+
+# set the identities to the new column(s)
+Idents(CART.patients) <- "CD4"
+
+
+# CD8 RNA
+CD8 <- WhichCells(object = CART.patients, expression = `CD8A` > log1p(0.2219068))
+
+# cell labels are returned
+
+head(CD8)
+
+# we then add a new column to the meta data based on the presence of the cell label from WhichCells
+
+CART.patients$CD8<- ifelse(colnames(CART.patients) %in% CD8, "CD8+", "CD8-")
+
+# set the identities to the new column(s)
+Idents(CART.patients) <- "CD8"
+
+
+
+# combine columns
+
+CART.patients$patient_CAR <- paste0(CART.patients$orig.ident ,"_", CART.patients$CAR)
+
+CART.patients@meta.data
+
+
+```
+
+
+## violin plots
+```{r}
+
+# choose a vector of genes
+gene <- c("IFITM1","IFITM2","DUSP2", "DUSP4")
+
+
+Idents(CART.patients) <- "patient_CAR"
+compare <- list( c("P01_CAR-", "P01_CAR+"),
+                 c("P02_CAR-", "P02_CAR+"),
+                 c("P03_CAR-", "P03_CAR+"),
+                 c("P04_CAR-", "P04_CAR+"),
+                 c("P05_CAR-", "P05_CAR+"),
+                 c("P06_CAR-", "P06_CAR+"),
+                 c("P07_CAR-", "P07_CAR+"),
+                 c("P08_CAR-", "P08_CAR+"),
+                 c("P09_CAR-", "P09_CAR+"),
+                 c("P10_CAR-", "P10_CAR+"),
+                 c("P11_CAR-", "P11_CAR+"),
+                 c("P12_CAR-", "P12_CAR+"),
+                 c("P13_CAR-", "P13_CAR+"))
+
+
+
+
+vln_df <- list()
+plot_list_vln_df <- list()
+pwc <- list()
+p.val.size <- 6
+plot.title.size <- 20
+set.seed(42)
+# change number according to total groups plotted
+mycolors <- c( "darkred", "darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue", "darkred","darkblue")
+
+for(i in gene){
+
+#  violin plot without noise
+vln_df[[i]] = data.frame(Expression=CART.patients[["RNA"]]@data[i,], Subset = CART.patients$patient_CAR)
+
+# Statistics
+pwc[[i]] <- vln_df[[i]] %>% 
+  wilcox_test(Expression ~ Subset, p.adjust.method = "none", comparisons = compare)
+pwc[[i]] <- pwc[[i]] %>% add_xy_position(x = "Subset")
+pwc[[i]]$FDR <- p.adjust(pwc[[i]]$p, method = "BH")#, n=length(gene))
+pwc[[i]] <- add_significance(pwc[[i]], p.col = "FDR", output.col = "FDR.signif")
+
+# Graphs
+# Add noise for optimal visualization purposes like VlnPlot() 
+noise <- rnorm(n = length(x = vln_df[[i]][, "Expression"])) / 100000
+vln_df[[i]]$Expression <- vln_df[[i]]$Expression  + noise
+
+# Variable stats position.
+### OBS! MIGHT NEED TO BE ADJUSTED for the hight of the p-value symbols and lines!!### the number after + should be adjusted
+y.position <- seq(max(vln_df[[i]]$Expression),max(vln_df[[i]]$Expression)+ 0.4 , by=0.5)
+
+# Variable ylim range
+ylim <- ylim(0, max(y.position)+0.1)
+
+# violin plot with noise
+if(i != gene[length(gene)]){
+  if (any(i == gene[seq(1, length(gene),by=7)])){
+  plot_list_vln_df[[i]] <- vln_df[[i]] %>%
+ggplot(mapping=aes(x=Subset, y=Expression)) + geom_violin(mapping=aes(x=Subset, y=Expression, fill=Subset),scale = "width")+scale_fill_manual(values = alpha((mycolors),0.9))+ geom_boxplot(outlier.size = 0.01, width=0.3, size=0.5, alpha=0.4) + 
+    theme_bw()+
+    xlab("") +
+  ggtitle(label=i) +
+  stat_pvalue_manual(pwc[[i]],  hide.ns = F, y.position = y.position, label = "FDR.signif", size = p.val.size, tip.length = 0) +
+  labs(subtitle = get_test_label(vln_df[[i]] %>% kruskal_test(Expression ~ Subset) %>% mutate(KW_FDR = p.adjust (p, method='BH')) %>% add_significance(p.col = "KW_FDR"), p.col = "KW_FDR.signif", detailed=F, description = NULL))+ylim +
+  theme(panel.grid = element_blank(),axis.title.y = element_text(size = 12), axis.text.y = element_text(size=12), axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5, size=plot.title.size, face = "bold"), plot.subtitle = element_blank())+ylab("Expression")+ theme(legend.position = "none" , aspect.ratio = 0.3)
+} 
+  else {
+  plot_list_vln_df[[i]] <- vln_df[[i]] %>%
+ggplot(mapping=aes(x=Subset, y=Expression)) + geom_violin(mapping=aes(x=Subset, y=Expression, fill=Subset),scale = "width")+scale_fill_manual(values = alpha((mycolors),0.9))+ geom_boxplot(outlier.size = 0.01, width=0.3, size=0.5, alpha=0.4) + 
+    theme_bw()+
+  xlab("") +
+  ggtitle(label=i) +
+  stat_pvalue_manual(pwc[[i]],  hide.ns = F, y.position =  y.position, label = "FDR.signif", size = p.val.size, tip.length = 0) +
+  labs(subtitle = get_test_label(vln_df[[i]] %>% kruskal_test(Expression ~ Subset) %>% mutate(KW_FDR = p.adjust (p, method='BH')) %>% add_significance(p.col = "KW_FDR"), p.col = "KW_FDR.signif", detailed=F, description = NULL))+ylim +
+  theme(panel.grid = element_blank(),axis.title.y = element_text(size = 12), axis.text.y = element_text(size=12), axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5, size=plot.title.size, face = "bold"), plot.subtitle = element_blank())+ylab("Expression")+ theme(legend.position = "none",  aspect.ratio = 0.3)
+}
+}
+else{plot_list_vln_df[[i]] <- vln_df[[i]] %>%
+ggplot(mapping=aes(x=Subset, y=Expression)) + geom_violin(mapping=aes(x=Subset, y=Expression, fill=Subset),scale = "width")+scale_fill_manual(values = alpha((mycolors),0.9))+ geom_boxplot(outlier.size = 0.01, width=0.3, size=0.5, alpha=0.4) + 
+    theme_bw()+
+  xlab("") +
+  ggtitle(label=i) +
+  stat_pvalue_manual(pwc[[i]],  hide.ns = F, y.position =  y.position, label = "FDR.signif", size = p.val.size, tip.length = 0) +
+  labs(subtitle = get_test_label(vln_df[[i]] %>% kruskal_test(Expression ~ Subset) %>% mutate(KW_FDR = p.adjust (p, method='BH')) %>% add_significance(p.col = "KW_FDR"), p.col = "KW_FDR.signif", detailed=F, description = NULL))+ylim +
+  theme(panel.grid = element_blank(),axis.title.y = element_text(size = 12), axis.text.y = element_text(size=12), axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5, size=plot.title.size, face = "bold"), plot.subtitle = element_blank()) +
+  theme(legend.title = element_text(size = 12), legend.text = element_text(size = 12), legend.key.size = unit(0.3, "cm"), aspect.ratio = 0.3)+ylab("Expression")
+}
+}
+```
+
+```{r}
+# Set the factor "f" to adjust the height of the exported pdf and play around with width
+f =5
+w = 15
+col = 1
+h = f*if(length(gene)==any(seq(col,length(gene),by=col))){length(gene)} else{(length(gene)/col)+0.5}
+n = if(length(gene)==any(seq(col,length(gene),by=col))){length(gene)/col} else{(length(gene)/col)+0.5}
+
+ggsave("Results/vln/allpatients.pdf", plot=ggarrange(plotlist=plot_list_vln_df, ncol = col, nrow=n, common.legend = T, legend = "none"), width = w, height = h, limitsize = F)
+```
+
+
+
+
